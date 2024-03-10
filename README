@@ -1,0 +1,89 @@
+SIMULATION OF A BITTORENT-LIKE PROTOCOL
+
+This homework implements a simple version of the BitTorrent protocol, simulating
+the interaction between a tracker and peers modeled as processes using the MPI
+library.
+
+The number of intended entities within the system is given as a runtime argument.
+each type of entity is running its specific function: tracker() or peer();
+
+The PEER:
+-> reads initial info from its associated file (in(rank).txt) in the format
+   specified in the assignment;
+-> sends initial info to the tracker;
+-> waits for a message from the tracker to start downloading, and then it spawns
+   two different threads: download and upload;
+DOWNLOAD:
+-> for each segment of a wanted file, it sends a request to a peer that owns it
+   and waits for a response; said peer is chosen randomly to maximize source variety;
+-> upon copleting a file, it writes it in the appropriate client(rank)_(filename)
+   file; once every 10 downloaded segments or when it finishes a file it sends
+   info about its new owned segments to the tracker;
+-> when all files are "downloaded", it sends a finish message to the tracker;
+UPLOAD:
+-> continuously waits for segment requests from other peers and sends an ack (ok)
+   upon receiving them (simulating the sending of the segment);
+-> it stops running when it receives the finish message from the tracker (when
+   all peers finished downloading their files);
+
+
+The TRACKER:
+-> receives and popullates its database with the initial info from each peer;
+-> continuously waits for 4 types of messages from the peers: requests for file
+   info (list of associated hashes), requests for swarm info (who owns what
+   segments from a specific file), ownership updates, and finished download signals;
+-> it sends appropriate responses to all requests received, and stops running upon
+   receiving a number of finish messages equal to that of the peers in the system,
+   then it sends a finish message to all upload threads of said peers;
+
+
+STRUCTURES:
+
+file -> name and vector of hashes (segments) associated with a file;
+wanted_file -> name, vector of hashes, and a map pairing each peer rank with its
+               vector of owned hashes associated with a file a peer wants to download;
+peer_info -> vectors of owned files and wanted files associated to a peer; each
+             peer has its own peer_info info structure containing all its data;
+
+OTHERS:
+vector<pair<string, int>> received_segs -> stores info about downloaded segments
+            as a list of pairs (filename, index of segment within the file); used
+            by peers;
+map<string, pair<vector<string>, map<int, vector<string>>>> db -> stores all data
+            kept by the tracker; maps each known filename to a pair consisting of:
+            a vector of hashes (the file's segments in order), and a mapping of
+            each peer's rank to a vector of the hashes it owns from that file;
+
+
+MPI PROTOCOL:
+-> initial exchanges: each peer sends a succession of messages as follows:
+         - number of owned files
+         - for each file: length of filename, filename, number of hashes,
+           and then all hashes in order
+-> peer-tracker communication: first message from a peer is an emtpy message with
+   a tag identifying the type of communication within the tracker function:
+         FILE_INFO_TAG: - receive: length of filename, filename
+                        - send: number of hashes associated with that filename,
+                                and all its hashes in order
+         SWARM_INFO_TAG: - receive: length of filename, filename
+                         - send: number of peers who owns hashes of that file,
+                                 and for each peer its rank, number of owned
+                                 hashes and all the hashes it owns
+         UPDATE_TAG: -receive: number of downloaded segments to receive, and
+                               for each segment: the length of its filename,
+                               filename, and its index within the file;
+         DOWNLOAD_DONE_TAG: - receive: the same as UPDATE_TAG
+                            - increments the number of finished peers
+   - when all peers send the DOWNLOAD_DONE_TAG message, the tracker sends an
+     empty message with the UPLOAD_TH_TAG to each peer, which will be received
+     by the upload thread, and stop its running;
+-> peer-peer communication: to simulate the download of a file segment:
+        the download thread sends an emtpy message with the UPLOAD_TH_TAG (to
+        identify messages for the upload thread), and then the hash of the
+        segment it wants to download; the upload thread responds with an emtpy
+        message with the ACK_TAG;
+
+More details in code comments.
+                     
+         
+              
